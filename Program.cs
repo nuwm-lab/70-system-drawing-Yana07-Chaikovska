@@ -1,16 +1,45 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
+using System.Linq;
 using System.Windows.Forms;
 
 namespace GraphProject
 {
-    public partial class Form1 : Form
+    internal static class Program
     {
-        public Form1()
+        [STAThread]
+        static void Main()
         {
-            InitializeComponent();
-            this.Resize += (s, e) => this.Invalidate(); // Перемальовує графік при зміні розміру
-            this.DoubleBuffered = true; // Усуває мерехтіння
+            Application.EnableVisualStyles();
+            Application.Run(new GraphForm());
+        }
+    }
+
+    public class GraphForm : Form
+    {
+        private const double XStart = 2.3;
+        private const double XEnd = 7.8;
+        private const double Step = 0.01;
+
+        private readonly Pen axisPen = new Pen(Color.Black, 2);
+        private readonly Pen graphPen = new Pen(Color.Red, 2);
+
+        public GraphForm()
+        {
+            this.Text = "Графік функції";
+            this.Width = 900;
+            this.Height = 600;
+
+            this.DoubleBuffered = true;
+
+            this.SetStyle(
+                ControlStyles.AllPaintingInWmPaint |
+                ControlStyles.UserPaint |
+                ControlStyles.OptimizedDoubleBuffer,
+                true);
+
+            this.ResizeRedraw = true;
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -20,53 +49,98 @@ namespace GraphProject
             Graphics g = e.Graphics;
             g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
-            // Розміри області малювання
-            int w = ClientSize.Width;
-            int h = ClientSize.Height;
+            Rectangle rect = this.ClientRectangle;
+            if (rect.Width < 100 || rect.Height < 100)
+                return;
 
-            // Фон
-            g.Clear(Color.White);
+            int left = 60;
+            int right = rect.Width - 20;
+            int top = 20;
+            int bottom = rect.Height - 40;
 
-            // Вісь X та Y
-            Pen axisPen = new Pen(Color.Black, 2);
-            g.DrawLine(axisPen, 40, h / 2, w - 20, h / 2); // X-вісь
-            g.DrawLine(axisPen, 40, 20, 40, h - 20);      // Y-вісь
+            g.DrawLine(axisPen, left, rect.Height / 2, right, rect.Height / 2);
+            g.DrawLine(axisPen, left, top, left, bottom);
 
-            // Параметри функції
-            double xStart = 2.3;
-            double xEnd = 7.8;
-            double step = 0.9;
+            List<PointF> points = GeneratePoints(rect, left, right, top, bottom);
+            DrawGraph(g, points);
+        }
 
-            // Масштаб
-            double scaleX = (w - 60) / (xEnd - xStart); // ширина графіка
-            double scaleY = 50;                        // коефіцієнт розтягування по Y
+        private List<PointF> GeneratePoints(Rectangle rect, int left, int right, int top, int bottom)
+        {
+            var points = new List<PointF>();
+            List<double> ys = new List<double>();
 
-            // Кисть для графіка
-            Pen graphPen = new Pen(Color.Red, 2);
-
-            // Малювання графіка
-            PointF? prevPoint = null;
-
-            for (double x = xStart; x <= xEnd; x += step)
+            for (double x = XStart; x <= XEnd; x += Step)
             {
-                double denominator = Math.Sin(3 * x) - x;
+                double d = Math.Sin(3 * x) - x;
+                if (Math.Abs(d) < 1e-6) continue;
 
-                if (Math.Abs(denominator) < 0.0001)
-                    continue; // уникнення ділення на 0
-
-                double y = (6 * x + 4) / denominator;
-
-                // Перетворення координат
-                float screenX = (float)(40 + (x - xStart) * scaleX);
-                float screenY = (float)(h / 2 - y * scaleY);
-
-                PointF currentPoint = new PointF(screenX, screenY);
-
-                if (prevPoint != null)
-                    g.DrawLine(graphPen, prevPoint.Value, currentPoint);
-
-                prevPoint = currentPoint;
+                double y = (6 * x + 4) / d;
+                if (!double.IsInfinity(y) && !double.IsNaN(y))
+                    ys.Add(y);
             }
+
+            double yMin = ys.Min();
+            double yMax = ys.Max();
+            double yRange = yMax - yMin;
+            if (yRange == 0) yRange = 1;
+
+            double scaleX = (right - left) / (XEnd - XStart);
+            double scaleY = (bottom - top) / yRange;
+
+            for (double x = XStart; x <= XEnd; x += Step)
+            {
+                double d = Math.Sin(3 * x) - x;
+                if (Math.Abs(d) < 1e-6)
+                {
+                    points.Add(PointF.Empty);
+                    continue;
+                }
+
+                double y = (6 * x + 4) / d;
+
+                if (double.IsInfinity(y) || double.IsNaN(y))
+                {
+                    points.Add(PointF.Empty);
+                    continue;
+                }
+
+                float sx = (float)(left + (x - XStart) * scaleX);
+                float sy = (float)(bottom - (y - yMin) * scaleY);
+
+                points.Add(new PointF(sx, sy));
+            }
+
+            return points;
+        }
+
+        private void DrawGraph(Graphics g, List<PointF> points)
+        {
+            PointF? prev = null;
+
+            foreach (var p in points)
+            {
+                if (p == PointF.Empty)
+                {
+                    prev = null;
+                    continue;
+                }
+
+                if (prev != null)
+                    g.DrawLine(graphPen, prev.Value, p);
+
+                prev = p;
+            }
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                axisPen.Dispose();
+                graphPen.Dispose();
+            }
+            base.Dispose(disposing);
         }
     }
 }

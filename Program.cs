@@ -1,4 +1,11 @@
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Linq;
+using System.Windows.Forms;
 
+namespace GraphProject
+{
     internal static class Program
     {
         [STAThread]
@@ -136,4 +143,3 @@
             base.Dispose(disposing);
         }
     }
-}
